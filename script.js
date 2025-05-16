@@ -207,9 +207,41 @@ function playStartSound() {
     playSound('start');
 }
 
-// Play intermediate notification (soft double bell)
+// Play intermediate notification with special handling for iOS
 function playIntermediateSound() {
-    playSound('intermediate');
+    console.log("Attempting to play intermediate sound");
+    
+    // Check if we're on iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    
+    // For iOS, try to forcefully resume audio context before playing
+    if (isIOS) {
+        // Try to resume audio context
+        if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+                console.log("AudioContext resumed for intermediate sound");
+                // Force a user interaction simulation
+                unblockPlayback();
+                // Now play the sound
+                playSound('intermediate');
+            }).catch(err => {
+                console.error("Failed to resume AudioContext for intermediate sound:", err);
+                // Still try to play the sound
+                playSound('intermediate');
+            });
+        } else {
+            // Audio context is already running or doesn't exist
+            playSound('intermediate');
+        }
+        
+        // Also trigger vibration which is more reliable on iOS
+        if ('vibrate' in navigator) {
+            navigator.vibrate([100, 50, 100]);
+        }
+    } else {
+        // Non-iOS device, just play normally
+        playSound('intermediate');
+    }
 }
 
 // Play end sound (bell sequence)
@@ -362,8 +394,26 @@ document.addEventListener('DOMContentLoaded', function() {
     let twoMinInterval;
     let oneMinInterval;
     
-    // Function to start timer
+    // Function to start timer with better iOS audio handling
     function startTimer(duration, displayElement, button, otherButton) {
+        // Force audio initialization
+        if (!audioContext) {
+            initAudio();
+        }
+        
+        // For iOS, try to unblock audio playback
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+            unblockPlayback();
+            
+            // Create a user gesture simulation
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume().catch(err => {
+                    console.error("Failed to resume AudioContext at timer start:", err);
+                });
+            }
+        }
+        
         // Play start sound
         playStartSound();
         
@@ -379,6 +429,16 @@ document.addEventListener('DOMContentLoaded', function() {
         
         let timer = duration;
         let minutes, seconds;
+        
+        // For iOS, create a periodic audio context resume
+        let audioKeepAlive;
+        if (isIOS) {
+            audioKeepAlive = setInterval(() => {
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume().catch(() => {});
+                }
+            }, 10000); // Try every 10 seconds
+        }
         
         const interval = setInterval(function() {
             minutes = parseInt(timer / 60, 10);
@@ -410,6 +470,8 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (--timer < 0) {
                 clearInterval(interval);
+                if (audioKeepAlive) clearInterval(audioKeepAlive);
+                
                 displayElement.textContent = duration === 120 ? "2:00" : "1:00";
                 
                 // Re-enable both buttons
@@ -493,3 +555,77 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize the app when the DOM is fully loaded
     initializeApp();
 });
+
+// Function to initialize audio specifically for iOS
+function initializeIOSAudio() {
+    // Add a tap-to-enable-audio message for iOS users
+    const audioPrompt = document.createElement('div');
+    audioPrompt.style.position = 'fixed';
+    audioPrompt.style.top = '50%';
+    audioPrompt.style.left = '50%';
+    audioPrompt.style.transform = 'translate(-50%, -50%)';
+    audioPrompt.style.padding = '20px';
+    audioPrompt.style.backgroundColor = 'rgba(0,0,0,0.8)';
+    audioPrompt.style.color = 'white';
+    audioPrompt.style.borderRadius = '10px';
+    audioPrompt.style.zIndex = '10000';
+    audioPrompt.style.textAlign = 'center';
+    audioPrompt.style.maxWidth = '80%';
+    audioPrompt.innerHTML = '<p>Tap here to enable sounds</p><p>(Required for timer notifications)</p>';
+    
+    // Add to document
+    document.body.appendChild(audioPrompt);
+    
+    // Handle tap
+    audioPrompt.addEventListener('click', function() {
+        // Initialize audio
+        initAudio();
+        
+        // Try to play a silent sound to enable audio
+        if (audioContext) {
+            // Resume the context
+            audioContext.resume().then(() => {
+                console.log("AudioContext resumed by user interaction");
+                
+                // Play a silent sound
+                const buffer = audioContext.createBuffer(1, 1, 22050);
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                source.start(0);
+                
+                // Also try a short beep
+                const osc = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                osc.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                gainNode.gain.setValueAtTime(0.01, audioContext.currentTime);
+                osc.frequency.setValueAtTime(440, audioContext.currentTime);
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + 0.1);
+                
+                // Remove the prompt
+                document.body.removeChild(audioPrompt);
+            }).catch(err => {
+                console.error("Failed to resume AudioContext on user interaction:", err);
+            });
+        }
+    });
+    
+    // Auto-remove after 10 seconds
+    setTimeout(() => {
+        if (document.body.contains(audioPrompt)) {
+            document.body.removeChild(audioPrompt);
+        }
+    }, 10000);
+}
+
+// Check if we're on iOS and initialize accordingly
+if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream) {
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeIOSAudio);
+    } else {
+        initializeIOSAudio();
+    }
+}
