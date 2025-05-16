@@ -334,9 +334,9 @@ function releaseWakeState() {
     }
 }
 
-// Simple but aggressive keep-alive function for iOS
+// Improved aggressive keep-alive function for iOS
 function setupAggressiveKeepAlive() {
-    console.log("Setting up aggressive keep-alive for iOS");
+    console.log("Setting up enhanced aggressive keep-alive for iOS");
     
     // Create video element for keeping the screen on
     const keepAliveVideo = document.createElement('video');
@@ -377,8 +377,9 @@ function setupAggressiveKeepAlive() {
             });
         }
         
-        // Force a DOM update
+        // Force a DOM update - more aggressive with multiple properties
         document.body.style.opacity = document.body.style.opacity === '0.9999' ? '1' : '0.9999';
+        document.body.style.transform = document.body.style.transform === 'translateZ(0)' ? 'translateZ(0.001px)' : 'translateZ(0)';
         
         // Create a short beep using Web Audio API if available
         if (audioContext && audioContext.state === 'running') {
@@ -422,13 +423,43 @@ function setupAggressiveKeepAlive() {
     document.getElementById('twoMinBtn').addEventListener('click', initialPlayMedia);
     document.getElementById('oneMinBtn').addEventListener('click', initialPlayMedia);
     
-    // Run the keep-alive function every 10 seconds
-    setInterval(tryPlayMedia, 10000);
+    // Run the keep-alive function more frequently (every 3 seconds)
+    setInterval(tryPlayMedia, 3000);
     
-    // Also run a lighter version every 5 seconds
+    // Also run a lighter version every 1 second
     setInterval(() => {
         document.body.style.opacity = document.body.style.opacity === '0.9999' ? '1' : '0.9999';
-    }, 5000);
+        document.body.style.transform = document.body.style.transform === 'translateZ(0)' ? 'translateZ(0.001px)' : 'translateZ(0)';
+    }, 1000);
+    
+    // Add a more aggressive keep-alive during timer operation
+    const enhanceKeepAliveForTimer = () => {
+        // Create a new audio oscillator every few seconds
+        if (audioContext && audioContext.state === 'running') {
+            try {
+                const osc = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                osc.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                // Set the volume extremely low
+                gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+                
+                // Use a high frequency that's less audible
+                osc.frequency.setValueAtTime(18000, audioContext.currentTime);
+                
+                // Play for a very short time
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + 0.05);
+            } catch (e) {
+                // Ignore errors
+            }
+        }
+    };
+    
+    // Run the enhanced keep-alive every 2 seconds
+    setInterval(enhanceKeepAliveForTimer, 2000);
 }
 
 // Variable to track if sleep prevention has been initialized
@@ -515,72 +546,118 @@ function preventSleep() {
             let twoMinInterval;
             let oneMinInterval;
             
-            // Update the startTimer function to remove the specific time-based keep-alive triggers
-            function startTimer(duration, displayElement, button, otherButton) {
-                // Play start sound
-                playStartSound();
+// Also modify the startTimer function to include additional keep-alive triggers
+function startTimer(duration, displayElement, button, otherButton) {
+    // Play start sound
+    playStartSound();
+    
+    // Disable both buttons initially
+    twoMinBtn.disabled = true;
+    oneMinBtn.disabled = true;
+    
+    // Add active class to the clicked button
+    button.classList.add('active');
+    
+    // Ensure sleep prevention is active
+    ensureSleepPrevention();
+    
+    // For iOS, try to refresh the keep-alive mechanisms
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS) {
+        // Try to play a silent sound to keep the device awake
+        if (audioContext) {
+            const buffer = audioContext.createBuffer(1, 1, 22050);
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start(0);
+        }
+    }
+    
+    let timer = duration;
+    let minutes, seconds;
+    
+    // Create a keep-alive interval specific to this timer
+    const keepAliveInterval = setInterval(() => {
+        // Force minimal DOM updates to prevent sleep
+        document.body.style.opacity = document.body.style.opacity === '0.9999' ? '1' : '0.9999';
+        
+        // For iOS, create a tiny audio blip
+        if (isIOS && audioContext && audioContext.state === 'running') {
+            try {
+                const osc = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
                 
-                // Disable both buttons initially
-                twoMinBtn.disabled = true;
-                oneMinBtn.disabled = true;
+                osc.connect(gainNode);
+                gainNode.connect(audioContext.destination);
                 
-                // Add active class to the clicked button
-                button.classList.add('active');
+                // Set the volume extremely low
+                gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
                 
-                let timer = duration;
-                let minutes, seconds;
+                // Use a high frequency that's less audible
+                osc.frequency.setValueAtTime(19500, audioContext.currentTime);
                 
-                const interval = setInterval(function() {
-                    minutes = parseInt(timer / 60, 10);
-                    seconds = parseInt(timer % 60, 10);
-                    
-                    minutes = minutes < 10 ? "0" + minutes : minutes;
-                    seconds = seconds < 10 ? "0" + seconds : seconds;
-                    
-                    displayElement.textContent = minutes + ":" + seconds;
-                    
-                    // Add sound notifications at specific times for 2-minute timer
-                    if (duration === 120) {
-                        // Play sound at 1:30 mark (30 seconds elapsed)
-                        if (timer === 90) {
-                            playIntermediateSound();
-                            console.log("Played 1:30 notification");
-                        }
-                        // Play sound at 1:00 mark (60 seconds elapsed)
-                        else if (timer === 60) {
-                            playIntermediateSound();
-                            console.log("Played 1:00 notification");
-                        }
-                        // Play sound at 0:30 mark (90 seconds elapsed)
-                        else if (timer === 30) {
-                            playIntermediateSound();
-                            console.log("Played 0:30 notification");
-                        }
-                    }
-                    
-                    if (--timer < 0) {
-                        clearInterval(interval);
-                        displayElement.textContent = duration === 120 ? "2:00" : "1:00";
-                        
-                        // Re-enable both buttons
-                        twoMinBtn.disabled = false;
-                        oneMinBtn.disabled = false;
-                        
-                        // Remove active class
-                        button.classList.remove('active');
-                        
-                        // Play end sound
-                        playEndSound();
-                        
-                        // Vibrate if supported (200ms vibration)
-                        if ('vibrate' in navigator) {
-                            navigator.vibrate([500, 200, 500]);
-                        }
-                    }
-                }, 1000);
-                
-                return interval;
+                // Play for a very short time
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + 0.01);
+            } catch (e) {
+                // Ignore errors
             }
+        }
+    }, 1000);
+    
+    const interval = setInterval(function() {
+        minutes = parseInt(timer / 60, 10);
+        seconds = parseInt(timer % 60, 10);
+        
+        minutes = minutes < 10 ? "0" + minutes : minutes;
+        seconds = seconds < 10 ? "0" + seconds : seconds;
+        
+        displayElement.textContent = minutes + ":" + seconds;
+        
+        // Add sound notifications at specific times for 2-minute timer
+        if (duration === 120) {
+            // Play sound at 1:30 mark (30 seconds elapsed)
+            if (timer === 90) {
+                playIntermediateSound();
+                console.log("Played 1:30 notification");
+            }
+            // Play sound at 1:00 mark (60 seconds elapsed)
+            else if (timer === 60) {
+                playIntermediateSound();
+                console.log("Played 1:00 notification");
+            }
+            // Play sound at 0:30 mark (90 seconds elapsed)
+            else if (timer === 30) {
+                playIntermediateSound();
+                console.log("Played 0:30 notification");
+            }
+        }
+        
+        if (--timer < 0) {
+            clearInterval(interval);
+            clearInterval(keepAliveInterval); // Clear the keep-alive interval
+            displayElement.textContent = duration === 120 ? "2:00" : "1:00";
+            
+            // Re-enable both buttons
+            twoMinBtn.disabled = false;
+            oneMinBtn.disabled = false;
+            
+            // Remove active class
+            button.classList.remove('active');
+            
+            // Play end sound
+            playEndSound();
+            
+            // Vibrate if supported (200ms vibration)
+            if ('vibrate' in navigator) {
+                navigator.vibrate([500, 200, 500]);
+            }
+        }
+    }, 1000);
+    
+    return interval;
+}
             
             twoMinBtn.addEventListener('click', function() {
                 // Initialize audio on first interaction
