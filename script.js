@@ -202,6 +202,11 @@
         }
     }
 
+    // Play start notification (bell sound)
+    function playStartSound() {
+    playSound('start');
+}
+
     // Play intermediate notification (soft double bell)
     function playIntermediateSound() {
         if (!audioContext) initAudio();
@@ -329,104 +334,101 @@ function releaseWakeState() {
     }
 }
 
-// Enhanced iOS-specific sleep prevention
-function enhancedIOSSleepPrevention() {
-    // Create a more reliable video element for iOS
-    const noSleepVideo = document.createElement('video');
-    noSleepVideo.setAttribute('playsinline', '');
-    noSleepVideo.setAttribute('webkit-playsinline', '');
-    noSleepVideo.setAttribute('muted', '');
-    noSleepVideo.setAttribute('autoplay', '');
-    noSleepVideo.setAttribute('loop', '');
-    noSleepVideo.muted = true;
-    noSleepVideo.playsInline = true;
+// Simple but aggressive keep-alive function for iOS
+function setupAggressiveKeepAlive() {
+    console.log("Setting up aggressive keep-alive for iOS");
     
-    // Style to make it invisible but present
-    noSleepVideo.style.position = 'absolute';
-    noSleepVideo.style.width = '10px';
-    noSleepVideo.style.height = '10px';
-    noSleepVideo.style.left = '0px';
-    noSleepVideo.style.top = '0px';
-    noSleepVideo.style.opacity = '0.01';
+    // Create video element for keeping the screen on
+    const keepAliveVideo = document.createElement('video');
+    keepAliveVideo.setAttribute('playsinline', '');
+    keepAliveVideo.setAttribute('webkit-playsinline', '');
+    keepAliveVideo.muted = true;
+    keepAliveVideo.loop = true;
+    keepAliveVideo.style.position = 'absolute';
+    keepAliveVideo.style.width = '1px';
+    keepAliveVideo.style.height = '1px';
+    keepAliveVideo.style.opacity = '0.01';
     
-    // Use the specific file you mentioned
+    // Add the video source
     const source = document.createElement('source');
-    source.src = 'sample.mp4'; // Using the file you specified
+    source.src = 'sample.mp4';
     source.type = 'video/mp4';
-    noSleepVideo.appendChild(source);
+    keepAliveVideo.appendChild(source);
+    document.body.appendChild(keepAliveVideo);
     
-    document.body.appendChild(noSleepVideo);
+    // Create audio element for keeping the device awake
+    const keepAliveAudio = new Audio();
+    keepAliveAudio.src = '1-sec.mp3';
+    keepAliveAudio.loop = true;
     
-    // Try to play the video on user interaction
-    const playVideo = () => {
-        noSleepVideo.play().then(() => {
-            console.log("NoSleep video playing successfully");
-        }).catch(e => {
-            console.error("NoSleep video play error:", e);
-        });
-    };
-    
-    // Add multiple event listeners to catch any user interaction
-    ['click', 'touchstart', 'touchend', 'mousedown', 'keydown'].forEach(eventType => {
-        document.addEventListener(eventType, playVideo, { once: true });
-    });
-    
-    // Create a timer element that updates every second
-    // This forces the browser to keep the JavaScript running
-    const timerElement = document.createElement('div');
-    timerElement.style.position = 'absolute';
-    timerElement.style.opacity = '0';
-    timerElement.style.pointerEvents = 'none';
-    document.body.appendChild(timerElement);
-    
-    // Update the timer element every second
-    setInterval(() => {
-        timerElement.textContent = new Date().toISOString();
-        
-        // Also try to play the video periodically
-        if (noSleepVideo.paused) {
-            noSleepVideo.play().catch(e => {
-                // Expected to fail without user interaction, but we keep trying
+    // Function to try playing both media elements
+    const tryPlayMedia = () => {
+        // Try to play video
+        if (keepAliveVideo.paused) {
+            keepAliveVideo.play().catch(() => {
+                console.log("Attempted to play keep-alive video");
             });
         }
         
-        // Force minimal DOM updates
+        // Try to play audio
+        if (keepAliveAudio.paused) {
+            keepAliveAudio.play().catch(() => {
+                console.log("Attempted to play keep-alive audio");
+            });
+        }
+        
+        // Force a DOM update
         document.body.style.opacity = document.body.style.opacity === '0.9999' ? '1' : '0.9999';
-    }, 1000);
-    
-    // Use the NoSleep.js approach - create a playing audio context
-    const audio = new Audio();
-    audio.src = '1-sec.mp3'; // Using the file you specified
-    audio.loop = true;
-    
-    // Try to play audio on user interaction
-    const playAudio = () => {
-        audio.play().then(() => {
-            console.log("NoSleep audio playing successfully");
-        }).catch(e => {
-            console.error("NoSleep audio play error:", e);
-        });
+        
+        // Create a short beep using Web Audio API if available
+        if (audioContext && audioContext.state === 'running') {
+            try {
+                const osc = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                osc.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                // Set the volume very low
+                gainNode.gain.setValueAtTime(0.001, audioContext.currentTime);
+                
+                // Use a high frequency that's less audible
+                osc.frequency.setValueAtTime(19000, audioContext.currentTime);
+                
+                // Play for a very short time
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + 0.01);
+            } catch (e) {
+                // Ignore errors
+            }
+        }
+        
+        console.log("Aggressive keep-alive triggered");
     };
     
-    // Add event listeners for audio playback
-    ['click', 'touchstart', 'touchend', 'mousedown', 'keydown'].forEach(eventType => {
-        document.addEventListener(eventType, playAudio, { once: true });
+    // Try to play media on user interaction
+    const initialPlayMedia = () => {
+        keepAliveVideo.play().catch(() => {});
+        keepAliveAudio.play().catch(() => {});
+        console.log("Initial media playback attempted");
+    };
+    
+    // Add event listeners for user interaction
+    ['click', 'touchstart', 'touchend', 'mousedown'].forEach(event => {
+        document.addEventListener(event, initialPlayMedia, { once: true });
     });
     
-    // Add a special handler for the timer buttons
-    const addNoSleepTrigger = (button) => {
-        button.addEventListener('click', () => {
-            playVideo();
-            playAudio();
-            console.log("NoSleep triggered by timer button");
-        });
-    };
+    // Add special handlers for the timer buttons
+    document.getElementById('twoMinBtn').addEventListener('click', initialPlayMedia);
+    document.getElementById('oneMinBtn').addEventListener('click', initialPlayMedia);
     
-    // Add triggers to both timer buttons
-    addNoSleepTrigger(document.getElementById('twoMinBtn'));
-    addNoSleepTrigger(document.getElementById('oneMinBtn'));
+    // Run the keep-alive function every 10 seconds
+    setInterval(tryPlayMedia, 10000);
     
-    console.log("Enhanced iOS sleep prevention initialized");
+    // Also run a lighter version every 5 seconds
+    setInterval(() => {
+        document.body.style.opacity = document.body.style.opacity === '0.9999' ? '1' : '0.9999';
+    }, 5000);
 }
 
 // Variable to track if sleep prevention has been initialized
@@ -441,14 +443,18 @@ function ensureSleepPrevention() {
     }
 }
 
-// Modify the preventSleep function
+// Modify the preventSleep function to use our aggressive approach for iOS
 function preventSleep() {
-    // First, detect if we're on iOS
+    // Detect if we're on iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     
     console.log("Device detection - iOS:", isIOS);
     
-    if (canWakeLock() && !isIOS) {
+    if (isIOS) {
+        // Use our aggressive approach for iOS
+        console.log("Using aggressive sleep prevention for iOS");
+        setupAggressiveKeepAlive();
+    } else if (canWakeLock()) {
         // Use Wake Lock API for supported non-iOS devices
         console.log("Using Wake Lock API");
         lockWakeState();
@@ -459,10 +465,6 @@ function preventSleep() {
                 lockWakeState();
             }
         });
-    } else if (isIOS) {
-        // Use our enhanced iOS-specific approach
-        console.log("Using iOS-specific sleep prevention");
-        enhancedIOSSleepPrevention();
     } else {
         // For other browsers without Wake Lock API
         console.log("Using fallback sleep prevention");
@@ -479,7 +481,7 @@ function preventSleep() {
         
         // Add a video source
         const source = document.createElement('source');
-        source.src = 'sample.mp4'; // Using the file you specified
+        source.src = 'sample.mp4';
         source.type = 'video/mp4';
         video.appendChild(source);
         
@@ -504,177 +506,120 @@ function preventSleep() {
 }
         
         // Timer functionality
-        const twoMinBtn = document.getElementById('twoMinBtn');
-        const oneMinBtn = document.getElementById('oneMinBtn');
-        const twoMinCountdown = document.getElementById('twoMinCountdown');
-        const oneMinCountdown = document.getElementById('oneMinCountdown');
-        
-        let twoMinInterval;
-        let oneMinInterval;
-        
-        function startTimer(duration, displayElement, button, otherButton) {
-            // Play start sound with the new system
-            playSound('start');
+        document.addEventListener('DOMContentLoaded', function() {
+            const twoMinBtn = document.getElementById('twoMinBtn');
+            const oneMinBtn = document.getElementById('oneMinBtn');
+            const twoMinCountdown = document.getElementById('twoMinCountdown');
+            const oneMinCountdown = document.getElementById('oneMinCountdown');
             
-            // Disable both buttons initially
-            twoMinBtn.disabled = true;
-            oneMinBtn.disabled = true;
+            let twoMinInterval;
+            let oneMinInterval;
             
-            // Add active class to the clicked button
-            button.classList.add('active');
-            
-            let timer = duration;
-            let minutes, seconds;
-            
-            // Track if notifications have been played
-            let notificationPlayed30s = false;
-            let notificationPlayed60s = false;
-            let notificationPlayed90s = false;
-            
-            const interval = setInterval(function() {
-                minutes = parseInt(timer / 60, 10);
-                seconds = parseInt(timer % 60, 10);
+            // Update the startTimer function to remove the specific time-based keep-alive triggers
+            function startTimer(duration, displayElement, button, otherButton) {
+                // Play start sound
+                playStartSound();
                 
-                minutes = minutes < 10 ? "0" + minutes : minutes;
-                seconds = seconds < 10 ? "0" + seconds : seconds;
+                // Disable both buttons initially
+                twoMinBtn.disabled = true;
+                oneMinBtn.disabled = true;
                 
-                displayElement.textContent = minutes + ":" + seconds;
+                // Add active class to the clicked button
+                button.classList.add('active');
                 
-                // Add sound notifications at specific times for 2-minute timer with range checking
-                if (duration === 120) {
-                    // Play sound at 1:30 mark (30 seconds elapsed)
-                    if (timer <= 90 && timer >= 89 && !notificationPlayed30s) {
-                        playSound('intermediate');
-                        notificationPlayed30s = true;
-                        console.log("Played 1:30 notification");
-                    }
-                    // Play sound at 1:00 mark (60 seconds elapsed)
-                    else if (timer <= 60 && timer >= 59 && !notificationPlayed60s) {
-                        playSound('intermediate');
-                        notificationPlayed60s = true;
-                        console.log("Played 1:00 notification");
-                    }
-                    // Play sound at 0:30 mark (90 seconds elapsed)
-                    else if (timer <= 30 && timer >= 29 && !notificationPlayed90s) {
-                        playSound('intermediate');
-                        notificationPlayed90s = true;
-                        console.log("Played 0:30 notification");
-                    }
-                }
+                let timer = duration;
+                let minutes, seconds;
                 
-                if (--timer < 0) {
-                    clearInterval(interval);
-                    displayElement.textContent = duration === 120 ? "2:00" : "1:00";
+                const interval = setInterval(function() {
+                    minutes = parseInt(timer / 60, 10);
+                    seconds = parseInt(timer % 60, 10);
                     
-                    // Re-enable both buttons
-                    twoMinBtn.disabled = false;
-                    oneMinBtn.disabled = false;
+                    minutes = minutes < 10 ? "0" + minutes : minutes;
+                    seconds = seconds < 10 ? "0" + seconds : seconds;
                     
-                    // Remove active class
-                    button.classList.remove('active');
+                    displayElement.textContent = minutes + ":" + seconds;
                     
-                    // Play end sound with the new system
-                    playSound('end');
-                    
-                    // Vibrate if supported (200ms vibration)
-                    if ('vibrate' in navigator) {
-                        navigator.vibrate([500, 200, 500]);
+                    // Add sound notifications at specific times for 2-minute timer
+                    if (duration === 120) {
+                        // Play sound at 1:30 mark (30 seconds elapsed)
+                        if (timer === 90) {
+                            playIntermediateSound();
+                            console.log("Played 1:30 notification");
+                        }
+                        // Play sound at 1:00 mark (60 seconds elapsed)
+                        else if (timer === 60) {
+                            playIntermediateSound();
+                            console.log("Played 1:00 notification");
+                        }
+                        // Play sound at 0:30 mark (90 seconds elapsed)
+                        else if (timer === 30) {
+                            playIntermediateSound();
+                            console.log("Played 0:30 notification");
+                        }
                     }
-                }
-            }, 1000);
-            
-            return interval;
-        }
-        
-        twoMinBtn.addEventListener('click', function() {
-    // Initialize audio on first interaction with better error handling
-    if (!initAudio()) {
-        console.warn("Audio initialization failed, but continuing with timer");
-    }
-    
-    // Force an audio unlock attempt for iOS
-    unlockAudioForIOS();
-    
-    // Ensure sleep prevention is active
-    ensureSleepPrevention();
-    
-    // Clear any existing intervals
-    if (twoMinInterval) clearInterval(twoMinInterval);
-    if (oneMinInterval) clearInterval(oneMinInterval);
-    
-    // Reset the other timer display
-    oneMinCountdown.textContent = "1:00";
-    oneMinBtn.classList.remove('active');
-    
-    // Start the 2-minute timer
-    twoMinInterval = startTimer(120, twoMinCountdown, twoMinBtn, oneMinBtn);
-});
-
-oneMinBtn.addEventListener('click', function() {
-    // Initialize audio on first interaction with better error handling
-    if (!initAudio()) {
-        console.warn("Audio initialization failed, but continuing with timer");
-    }
-    
-    // Force an audio unlock attempt for iOS
-    unlockAudioForIOS();
-    
-    // Clear any existing intervals
-    if (twoMinInterval) clearInterval(twoMinInterval);
-    if (oneMinInterval) clearInterval(oneMinInterval);
-    
-    // Reset the other timer display
-    twoMinCountdown.textContent = "2:00";
-    twoMinBtn.classList.remove('active');
-    
-    // Start the 1-minute timer
-    oneMinInterval = startTimer(60, oneMinCountdown, oneMinBtn, twoMinBtn);
-});
-
-// Function specifically designed to unlock audio on iOS
-function unlockAudioForIOS() {
-    // Create and play a silent HTML audio element
-    const silentAudio = document.createElement('audio');
-    silentAudio.setAttribute('autoplay', '');
-    silentAudio.setAttribute('playsinline', '');
-    silentAudio.setAttribute('webkit-playsinline', '');
-    
-    // Use the specified MP3 file
-    const source = document.createElement('source');
-    source.src = '1-sec.mp3'; // Using the file you specified
-    source.type = 'audio/mpeg';
-    silentAudio.appendChild(source);
-    
-    // Play the silent audio
-    document.body.appendChild(silentAudio);
-    silentAudio.play().then(() => {
-        console.log("Silent audio played successfully");
-        
-        // Also try to create a very short beep with the Web Audio API
-        if (audioContext) {
-            try {
-                const osc = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
+                    
+                    if (--timer < 0) {
+                        clearInterval(interval);
+                        displayElement.textContent = duration === 120 ? "2:00" : "1:00";
+                        
+                        // Re-enable both buttons
+                        twoMinBtn.disabled = false;
+                        oneMinBtn.disabled = false;
+                        
+                        // Remove active class
+                        button.classList.remove('active');
+                        
+                        // Play end sound
+                        playEndSound();
+                        
+                        // Vibrate if supported (200ms vibration)
+                        if ('vibrate' in navigator) {
+                            navigator.vibrate([500, 200, 500]);
+                        }
+                    }
+                }, 1000);
                 
-                osc.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-                
-                // Set the volume very low
-                gainNode.gain.setValueAtTime(0.01, audioContext.currentTime);
-                
-                // Use a high frequency that's less audible
-                osc.frequency.setValueAtTime(19000, audioContext.currentTime);
-                
-                // Play for a very short time
-                osc.start(audioContext.currentTime);
-                osc.stop(audioContext.currentTime + 0.01);
-                
-                console.log("Web Audio API test tone created");
-            } catch (e) {
-                console.error("Failed to create test tone:", e);
+                return interval;
             }
-        }
-    }).catch(e => {
-        console.error("Silent audio play error:", e);
-    });
-}
+            
+            twoMinBtn.addEventListener('click', function() {
+                // Initialize audio on first interaction
+                initAudio();
+                
+                // Unblock audio for iOS silent mode
+                unblockPlayback();
+                
+                // Clear any existing intervals
+                if (twoMinInterval) clearInterval(twoMinInterval);
+                if (oneMinInterval) clearInterval(oneMinInterval);
+                
+                // Reset the other timer display
+                oneMinCountdown.textContent = "1:00";
+                oneMinBtn.classList.remove('active');
+                
+                // Start the 2-minute timer
+                twoMinInterval = startTimer(120, twoMinCountdown, twoMinBtn, oneMinBtn);
+            });
+            
+            oneMinBtn.addEventListener('click', function() {
+                // Initialize audio on first interaction
+                initAudio();
+                
+                // Unblock audio for iOS silent mode
+                unblockPlayback();
+                
+                // Clear any existing intervals
+                if (twoMinInterval) clearInterval(twoMinInterval);
+                if (oneMinInterval) clearInterval(oneMinInterval);
+                
+                // Reset the other timer display
+                twoMinCountdown.textContent = "2:00";
+                twoMinBtn.classList.remove('active');
+                
+                // Start the 1-minute timer
+                oneMinInterval = startTimer(60, oneMinCountdown, oneMinBtn, twoMinBtn);
+            });
+            
+            // Call the function to prevent sleep
+            preventSleep();
+        });

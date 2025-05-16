@@ -45,7 +45,7 @@ h1 {
     color: #2c7bb6;
     margin-bottom: 30px;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
-    font-size: 2.5rem;
+    font-size: 70px;
     position: relative;
    width: 80%;
    text-align: center;
@@ -66,14 +66,14 @@ h1 {
 
 .timer-button {
     padding: 20px;
-    font-size: 24px;
+    font-size: 54px;
     border: none;
     border-radius: 15px;
     background: linear-gradient(145deg, #41d6ff, #2c7bb6);
     color: white;
     cursor: pointer;
     transition: all 0.3s;
-    height: 120px;
+    height: 320px;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
     position: relative;
     overflow: hidden;
@@ -112,7 +112,7 @@ h1 {
 }
 
 .countdown {
-    font-size: 36px;
+    font-size: 60px;
     font-weight: bold;
     margin-top: 10px;
     color: white;
