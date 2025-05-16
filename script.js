@@ -1,20 +1,44 @@
-    // Audio context for sound effects
-    let audioContext;
-    
+    // Global audio context with better management
+    let audioContext = null;
+    let audioInitialized = false;
 
-    // Improved audio initialization for iOS
+    // Initialize audio context with more robust handling
     function initAudio() {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext === null) {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                console.log("AudioContext created with state:", audioContext.state);
+                
+                // iOS requires explicit resume of AudioContext
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume().then(() => {
+                        console.log("AudioContext resumed successfully");
+                        audioInitialized = true;
+                    }).catch(err => {
+                        console.error("Failed to resume AudioContext:", err);
+                    });
+                } else {
+                    audioInitialized = true;
+                    console.log("AudioContext initialized and active");
+                }
+                
+                // Setup event listener for state changes
+                audioContext.onstatechange = () => {
+                    console.log("AudioContext state changed to:", audioContext.state);
+                };
+            } catch (e) {
+                console.error("Failed to create AudioContext:", e);
+            }
+        } else if (audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+                console.log("AudioContext resumed from suspended state");
+                audioInitialized = true;
+            }).catch(err => {
+                console.error("Failed to resume existing AudioContext:", err);
+            });
         }
         
-        // iOS requires explicit resume of AudioContext
-        if (audioContext.state === 'suspended') {
-            audioContext.resume();
-        }
-        
-        // Create and play a silent audio file to enable audio in silent mode on iOS
-        enableIOSAudio();
+        return audioInitialized;
     }
     
     // Function to enable audio on iOS silent mode
@@ -39,38 +63,115 @@
         unblockPlayback();
     }
     
-    // Play start sound (soft bell)
-    function playStartSound() {
-        if (!audioContext) initAudio();
+    // Reliable sound player function that works on all devices
+    function playSound(type) {
+        console.log(`Attempting to play ${type} sound`);
         
-        // iOS requires explicit resume of AudioContext
-        if (audioContext.state === 'suspended') {
-            audioContext.resume();
+        // Make sure audio is initialized
+        if (!audioContext) {
+            const initialized = initAudio();
+            if (!initialized) {
+                console.error("Failed to initialize audio for", type);
+                return;
+            }
         }
         
-        // Create multiple oscillators for richer bell-like sound
-        const createBellTone = (freq, gain) => {
+        // Always try to resume the context before playing
+        if (audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+                console.log("AudioContext resumed before playing", type);
+                actuallyPlaySound(type);
+            }).catch(err => {
+                console.error(`Failed to resume AudioContext for ${type}:`, err);
+            });
+        } else {
+            actuallyPlaySound(type);
+        }
+        
+        // Add vibration for mobile devices
+        if ('vibrate' in navigator) {
+            switch(type) {
+                case 'start':
+                    navigator.vibrate(100);
+                    break;
+                case 'intermediate':
+                    navigator.vibrate([100, 50, 100]);
+                    break;
+                case 'end':
+                    navigator.vibrate([200, 100, 200, 100, 200]);
+                    break;
+            }
+        }
+    }
+
+    // Function that actually plays the sound
+    function actuallyPlaySound(type) {
+        console.log(`Actually playing ${type} sound`);
+        
+        const now = audioContext.currentTime;
+        
+        switch(type) {
+            case 'start':
+                // Create bell-like sound with harmonics
+                createBellTone(440, 0.4, now);  // Fundamental - increased volume
+                createBellTone(880, 0.2, now);  // 2nd harmonic - increased volume
+                createBellTone(1320, 0.15, now); // 3rd harmonic - increased volume
+                break;
+                
+            case 'intermediate':
+                // Double bell for intermediate
+                createBellTone(523.25, 0.4, now);  // Fundamental (C5) - increased volume
+                createBellTone(1046.5, 0.2, now);  // 2nd harmonic - increased volume
+                createBellTone(1569.75, 0.1, now); // 3rd harmonic - increased volume
+                
+                // Second bell after a short delay
+                createBellTone(523.25, 0.4, now + 0.5);
+                createBellTone(1046.5, 0.2, now + 0.5);
+                createBellTone(1569.75, 0.1, now + 0.5);
+                break;
+                
+            case 'end':
+                // Play ascending bell sequence with increased volume
+                createBellTone(523.25, 0.4, now);       // C5
+                createBellTone(523.25 * 2, 0.2, now);   // 2nd harmonic
+                createBellTone(523.25 * 3, 0.1, now);   // 3rd harmonic
+                
+                createBellTone(587.33, 0.4, now + 0.6); // D5
+                createBellTone(587.33 * 2, 0.2, now + 0.6);
+                createBellTone(587.33 * 3, 0.1, now + 0.6);
+                
+                createBellTone(659.25, 0.4, now + 1.2); // E5
+                createBellTone(659.25 * 2, 0.2, now + 1.2);
+                createBellTone(659.25 * 3, 0.1, now + 1.2);
+                break;
+        }
+    }
+
+    // Helper function to create bell tones
+    function createBellTone(freq, gain, time) {
+        try {
             const osc = audioContext.createOscillator();
             const gainNode = audioContext.createGain();
             
             osc.type = 'sine';
             osc.frequency.value = freq;
             
-            gainNode.gain.setValueAtTime(gain, audioContext.currentTime);
-            // Use linearRampToValueAtTime instead of exponentialRampToValueAtTime for iOS
-            gainNode.gain.linearRampToValueAtTime(0.01, audioContext.currentTime + 1.5);
+            gainNode.gain.setValueAtTime(gain, time);
+            // Use linearRampToValueAtTime for better iOS compatibility
+            gainNode.gain.linearRampToValueAtTime(0.01, time + 1.0);
             
             osc.connect(gainNode);
             gainNode.connect(audioContext.destination);
             
-            osc.start();
-            osc.stop(audioContext.currentTime + 1.5);
-        };
-        
-        // Create bell-like sound with harmonics
-        createBellTone(440, 0.3);  // Fundamental
-        createBellTone(880, 0.15); // 2nd harmonic
-        createBellTone(1320, 0.1); // 3rd harmonic
+            osc.start(time);
+            osc.stop(time + 1.0);
+            
+            console.log(`Created bell tone at frequency ${freq}`);
+            return true;
+        } catch (e) {
+            console.error("Failed to create bell tone:", e);
+            return false;
+        }
     }
 
     // Improved unblockPlayback function
@@ -228,27 +329,151 @@ function releaseWakeState() {
     }
 }
 
-// Prevent device from sleeping
+// Improved sleep prevention that works on iOS
 function preventSleep() {
-    // Request a wake lock if supported
-    if (canWakeLock()) {
-        // Initial request
+    // First, detect if we're on iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    
+    console.log("Device detection - iOS:", isIOS);
+    
+    if (canWakeLock() && !isIOS) {
+        // Use Wake Lock API for supported non-iOS devices
+        console.log("Using Wake Lock API");
         lockWakeState();
         
         // Handle visibility changes
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && !wakeLock) {
-                // Re-request wake lock when page becomes visible again
                 lockWakeState();
             }
         });
     } else {
-        // Fallback for browsers that don't support Wake Lock API
-        // This is less reliable but better than nothing
+        // For iOS or devices without Wake Lock API support
+        console.log("Using fallback sleep prevention");
+        
+        // Create a video element playing silently in the background
+        const video = document.createElement('video');
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+        video.muted = true;
+        video.loop = true;
+        video.autoplay = true;
+        video.width = 1;
+        video.height = 1;
+        video.style.position = 'absolute';
+        video.style.left = '-1px';
+        video.style.top = '-1px';
+        video.style.opacity = '0.01';
+        
+        // Add a blank video source (data URI for a tiny video)
+        const source = document.createElement('source');
+        source.src = 'sample.mp4';;
+        source.type = 'video/mp4';
+        video.appendChild(source);
+        
+        document.body.appendChild(video);
+        
+        // Function to ensure video is playing
+        const ensureVideoIsPlaying = () => {
+            if (video.paused) {
+                video.play().catch(e => {
+                    console.error("Failed to play video for sleep prevention:", e);
+                });
+            }
+        };
+        
+        // Play the video to keep the screen awake
+        video.play().catch(e => {
+            console.error("Initial video play error:", e);
+            
+            // For iOS, we need user interaction first
+            // We'll try again when user interacts with the page
+            document.addEventListener('click', function videoPlayHandler() {
+                video.play().catch(e => console.error("Video play error after click:", e));
+                document.removeEventListener('click', videoPlayHandler);
+            }, { once: true });
+        });
+        
+        // Periodically check if video is still playing
+        setInterval(ensureVideoIsPlaying, 30000);
+        
+        // Also use audio to prevent sleep
+        const createNoSleepAudio = () => {
+            const audio = new Audio();
+            audio.src = 'silence.mp3'; // Your silent MP3
+            audio.loop = true;
+            audio.play().catch(e => console.error("Audio play error:", e));
+            return audio;
+        };
+        
+        let noSleepAudio = null;
+        
+        // Start audio on user interaction
+        document.addEventListener('click', function audioStartHandler() {
+            if (!noSleepAudio) {
+                noSleepAudio = createNoSleepAudio();
+            }
+            document.removeEventListener('click', audioStartHandler);
+        }, { once: true });
+        
+        // Also use the opacity trick as additional fallback
         setInterval(() => {
-            // Force a minimal DOM update to keep the screen on
             document.body.style.opacity = document.body.style.opacity === '0.9999' ? '1' : '0.9999';
         }, 30000);
+        
+        // For iOS, add a touchstart listener to keep the device awake
+        if (isIOS) {
+            // Create an invisible div that covers the whole screen
+            const touchDiv = document.createElement('div');
+            touchDiv.style.position = 'fixed';
+            touchDiv.style.top = '0';
+            touchDiv.style.left = '0';
+            touchDiv.style.width = '100%';
+            touchDiv.style.height = '100%';
+            touchDiv.style.zIndex = '-1'; // Behind everything
+            touchDiv.style.opacity = '0';
+            touchDiv.style.pointerEvents = 'none'; // Don't block real interactions
+            document.body.appendChild(touchDiv);
+            
+            // Every 30 seconds, simulate a touch event
+            setInterval(() => {
+                // Create and dispatch a touch event
+                try {
+                    const touchEvent = new TouchEvent('touchstart', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                    });
+                    touchDiv.dispatchEvent(touchEvent);
+                    console.log("Simulated touch event to prevent sleep");
+                } catch (e) {
+                    console.error("Failed to create touch event:", e);
+                    
+                    // Fallback: create a user interaction by focusing and blurring an element
+                    const dummyInput = document.createElement('input');
+                    dummyInput.style.position = 'absolute';
+                    dummyInput.style.opacity = '0';
+                    document.body.appendChild(dummyInput);
+                    dummyInput.focus();
+                    setTimeout(() => {
+                        dummyInput.blur();
+                        document.body.removeChild(dummyInput);
+                    }, 10);
+                }
+            }, 30000);
+        }
+    }
+}
+
+// Variable to track if sleep prevention has been initialized
+let sleepPreventionInitialized = false;
+
+// Function to ensure sleep prevention is active
+function ensureSleepPrevention() {
+    if (!sleepPreventionInitialized) {
+        preventSleep();
+        sleepPreventionInitialized = true;
+        console.log("Sleep prevention initialized");
     }
 }
 
@@ -265,8 +490,8 @@ preventSleep();
         let oneMinInterval;
         
         function startTimer(duration, displayElement, button, otherButton) {
-            // Play start sound
-            playStartSound();
+            // Play start sound with the new system
+            playSound('start');
             
             // Disable both buttons initially
             twoMinBtn.disabled = true;
@@ -278,6 +503,11 @@ preventSleep();
             let timer = duration;
             let minutes, seconds;
             
+            // Track if notifications have been played
+            let notificationPlayed30s = false;
+            let notificationPlayed60s = false;
+            let notificationPlayed90s = false;
+            
             const interval = setInterval(function() {
                 minutes = parseInt(timer / 60, 10);
                 seconds = parseInt(timer % 60, 10);
@@ -287,19 +517,25 @@ preventSleep();
                 
                 displayElement.textContent = minutes + ":" + seconds;
                 
-                // Add sound notifications at specific times for 2-minute timer
+                // Add sound notifications at specific times for 2-minute timer with range checking
                 if (duration === 120) {
                     // Play sound at 1:30 mark (30 seconds elapsed)
-                    if (timer === 90) {
-                        playIntermediateSound();
+                    if (timer <= 90 && timer >= 89 && !notificationPlayed30s) {
+                        playSound('intermediate');
+                        notificationPlayed30s = true;
+                        console.log("Played 1:30 notification");
                     }
                     // Play sound at 1:00 mark (60 seconds elapsed)
-                    else if (timer === 60) {
-                        playIntermediateSound();
+                    else if (timer <= 60 && timer >= 59 && !notificationPlayed60s) {
+                        playSound('intermediate');
+                        notificationPlayed60s = true;
+                        console.log("Played 1:00 notification");
                     }
                     // Play sound at 0:30 mark (90 seconds elapsed)
-                    else if (timer === 30) {
-                        playIntermediateSound();
+                    else if (timer <= 30 && timer >= 29 && !notificationPlayed90s) {
+                        playSound('intermediate');
+                        notificationPlayed90s = true;
+                        console.log("Played 0:30 notification");
                     }
                 }
                 
@@ -314,8 +550,8 @@ preventSleep();
                     // Remove active class
                     button.classList.remove('active');
                     
-                    // Play end sound
-                    playEndSound();
+                    // Play end sound with the new system
+                    playSound('end');
                     
                     // Vibrate if supported (200ms vibration)
                     if ('vibrate' in navigator) {
@@ -328,14 +564,16 @@ preventSleep();
         }
         
         twoMinBtn.addEventListener('click', function() {
-    // Force user interaction for iOS
-    enableIOSAudio();
+    // Initialize audio on first interaction with better error handling
+    if (!initAudio()) {
+        console.warn("Audio initialization failed, but continuing with timer");
+    }
     
-    // Initialize audio on first interaction
-    initAudio();
+    // Force an audio unlock attempt for iOS
+    unlockAudioForIOS();
     
-    // Unblock audio for iOS silent mode
-    unblockPlayback();
+    // Ensure sleep prevention is active
+    ensureSleepPrevention();
     
     // Clear any existing intervals
     if (twoMinInterval) clearInterval(twoMinInterval);
@@ -350,11 +588,13 @@ preventSleep();
 });
 
 oneMinBtn.addEventListener('click', function() {
-    // Initialize audio on first interaction
-    initAudio();
+    // Initialize audio on first interaction with better error handling
+    if (!initAudio()) {
+        console.warn("Audio initialization failed, but continuing with timer");
+    }
     
-    // Unblock audio for iOS silent mode
-    unblockPlayback();
+    // Force an audio unlock attempt for iOS
+    unlockAudioForIOS();
     
     // Clear any existing intervals
     if (twoMinInterval) clearInterval(twoMinInterval);
@@ -367,3 +607,51 @@ oneMinBtn.addEventListener('click', function() {
     // Start the 1-minute timer
     oneMinInterval = startTimer(60, oneMinCountdown, oneMinBtn, twoMinBtn);
 });
+
+// Function specifically designed to unlock audio on iOS
+function unlockAudioForIOS() {
+    // Create and play a silent HTML audio element
+    const silentAudio = document.createElement('audio');
+    silentAudio.setAttribute('autoplay', '');
+    silentAudio.setAttribute('playsinline', '');
+    silentAudio.setAttribute('webkit-playsinline', '');
+    
+    // Use the empty MP3 file you've already added
+    const source = document.createElement('source');
+    source.src = '1-sec.mp3'; // Assuming this is the name of your empty MP3 file
+    source.type = 'audio/mpeg';
+    silentAudio.appendChild(source);
+    
+    // Play the silent audio
+    document.body.appendChild(silentAudio);
+    silentAudio.play().then(() => {
+        console.log("Silent audio played successfully");
+        
+        // Also try to create a very short beep with the Web Audio API
+        if (audioContext) {
+            try {
+                const osc = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                osc.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                // Set the volume very low
+                gainNode.gain.setValueAtTime(0.01, audioContext.currentTime);
+                
+                // Use a high frequency that's less audible
+                osc.frequency.setValueAtTime(19000, audioContext.currentTime);
+                
+                // Play for a very short time
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + 0.01);
+                
+                console.log("Web Audio API test tone created");
+            } catch (e) {
+                console.error("Failed to create test tone:", e);
+            }
+        }
+    }).catch(e => {
+        console.error("Silent audio play error:", e);
+    });
+}
