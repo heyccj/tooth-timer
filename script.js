@@ -1,7 +1,8 @@
     // Audio context for sound effects
     let audioContext;
     
-    // Initialize audio context on user interaction
+
+    // Improved audio initialization for iOS
     function initAudio() {
         if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -11,6 +12,31 @@
         if (audioContext.state === 'suspended') {
             audioContext.resume();
         }
+        
+        // Create and play a silent audio file to enable audio in silent mode on iOS
+        enableIOSAudio();
+    }
+    
+    // Function to enable audio on iOS silent mode
+    function enableIOSAudio() {
+        // Create a silent HTML audio element
+        const silentAudio = document.createElement('audio');
+        silentAudio.setAttribute('autoplay', '');
+        silentAudio.setAttribute('playsinline', '');
+        silentAudio.setAttribute('webkit-playsinline', '');
+        
+        // Add a short silent MP3 file (can be replaced with a real silent MP3)
+        const source = document.createElement('source');
+        source.src = 'data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+        source.type = 'audio/mpeg';
+        silentAudio.appendChild(source);
+        
+        // Play the silent audio
+        document.body.appendChild(silentAudio);
+        silentAudio.play().catch(e => console.error('Silent audio play error:', e));
+        
+        // Also use the unblockPlayback function
+        unblockPlayback();
     }
     
     // Play start sound (soft bell)
@@ -47,17 +73,33 @@
         createBellTone(1320, 0.1); // 3rd harmonic
     }
 
-    // Function to unblock audio playback on iOS
-function unblockPlayback() {
-    // Create and play a silent audio buffer to unblock audio on iOS
-    if (audioContext) {
-        const buffer = audioContext.createBuffer(1, 1, 22050);
-        const source = audioContext.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioContext.destination);
-        source.start(0);
+    // Improved unblockPlayback function
+    function unblockPlayback() {
+        // Create and play a silent audio buffer to unblock audio on iOS
+        if (audioContext) {
+            const buffer = audioContext.createBuffer(1, 1, 22050);
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start(0);
+            
+            // For iOS, also try playing a short beep that's inaudible
+            const osc = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Set the volume very low
+            gainNode.gain.setValueAtTime(0.01, audioContext.currentTime);
+            
+            // Use a high frequency that's less audible
+            osc.frequency.setValueAtTime(19000, audioContext.currentTime);
+            
+            // Play for a very short time
+            osc.start(audioContext.currentTime);
+            osc.stop(audioContext.currentTime + 0.01);
+        }
     }
-}
 
     // Play intermediate notification (soft double bell)
     function playIntermediateSound() {
@@ -286,6 +328,9 @@ preventSleep();
         }
         
         twoMinBtn.addEventListener('click', function() {
+    // Force user interaction for iOS
+    enableIOSAudio();
+    
     // Initialize audio on first interaction
     initAudio();
     
