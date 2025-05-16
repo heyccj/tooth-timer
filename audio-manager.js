@@ -49,9 +49,9 @@ class AudioManager {
         // Create the prompt element
         this.promptElement = document.createElement('div');
         this.promptElement.style.position = 'fixed';
-        this.promptElement.style.top = '50%';
+        this.promptElement.style.top = '10%';
         this.promptElement.style.left = '50%';
-        this.promptElement.style.transform = 'translate(-50%, -50%)';
+        this.promptElement.style.transform = 'translate(-50%, 0%)';
         this.promptElement.style.padding = '20px';
         this.promptElement.style.backgroundColor = 'rgba(0,0,0,0.8)';
         this.promptElement.style.color = 'white';
