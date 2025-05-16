@@ -329,7 +329,119 @@ function releaseWakeState() {
     }
 }
 
-// Improved sleep prevention that works on iOS
+// Enhanced iOS-specific sleep prevention
+function enhancedIOSSleepPrevention() {
+    // Create a more reliable video element for iOS
+    const noSleepVideo = document.createElement('video');
+    noSleepVideo.setAttribute('playsinline', '');
+    noSleepVideo.setAttribute('webkit-playsinline', '');
+    noSleepVideo.setAttribute('muted', '');
+    noSleepVideo.setAttribute('autoplay', '');
+    noSleepVideo.setAttribute('loop', '');
+    noSleepVideo.muted = true;
+    noSleepVideo.playsInline = true;
+    
+    // Style to make it invisible but present
+    noSleepVideo.style.position = 'absolute';
+    noSleepVideo.style.width = '10px';
+    noSleepVideo.style.height = '10px';
+    noSleepVideo.style.left = '0px';
+    noSleepVideo.style.top = '0px';
+    noSleepVideo.style.opacity = '0.01';
+    
+    // Use the specific file you mentioned
+    const source = document.createElement('source');
+    source.src = 'sample.mp4'; // Using the file you specified
+    source.type = 'video/mp4';
+    noSleepVideo.appendChild(source);
+    
+    document.body.appendChild(noSleepVideo);
+    
+    // Try to play the video on user interaction
+    const playVideo = () => {
+        noSleepVideo.play().then(() => {
+            console.log("NoSleep video playing successfully");
+        }).catch(e => {
+            console.error("NoSleep video play error:", e);
+        });
+    };
+    
+    // Add multiple event listeners to catch any user interaction
+    ['click', 'touchstart', 'touchend', 'mousedown', 'keydown'].forEach(eventType => {
+        document.addEventListener(eventType, playVideo, { once: true });
+    });
+    
+    // Create a timer element that updates every second
+    // This forces the browser to keep the JavaScript running
+    const timerElement = document.createElement('div');
+    timerElement.style.position = 'absolute';
+    timerElement.style.opacity = '0';
+    timerElement.style.pointerEvents = 'none';
+    document.body.appendChild(timerElement);
+    
+    // Update the timer element every second
+    setInterval(() => {
+        timerElement.textContent = new Date().toISOString();
+        
+        // Also try to play the video periodically
+        if (noSleepVideo.paused) {
+            noSleepVideo.play().catch(e => {
+                // Expected to fail without user interaction, but we keep trying
+            });
+        }
+        
+        // Force minimal DOM updates
+        document.body.style.opacity = document.body.style.opacity === '0.9999' ? '1' : '0.9999';
+    }, 1000);
+    
+    // Use the NoSleep.js approach - create a playing audio context
+    const audio = new Audio();
+    audio.src = '1-sec.mp3'; // Using the file you specified
+    audio.loop = true;
+    
+    // Try to play audio on user interaction
+    const playAudio = () => {
+        audio.play().then(() => {
+            console.log("NoSleep audio playing successfully");
+        }).catch(e => {
+            console.error("NoSleep audio play error:", e);
+        });
+    };
+    
+    // Add event listeners for audio playback
+    ['click', 'touchstart', 'touchend', 'mousedown', 'keydown'].forEach(eventType => {
+        document.addEventListener(eventType, playAudio, { once: true });
+    });
+    
+    // Add a special handler for the timer buttons
+    const addNoSleepTrigger = (button) => {
+        button.addEventListener('click', () => {
+            playVideo();
+            playAudio();
+            console.log("NoSleep triggered by timer button");
+        });
+    };
+    
+    // Add triggers to both timer buttons
+    addNoSleepTrigger(document.getElementById('twoMinBtn'));
+    addNoSleepTrigger(document.getElementById('oneMinBtn'));
+    
+    console.log("Enhanced iOS sleep prevention initialized");
+}
+
+// Variable to track if sleep prevention has been initialized
+let sleepPreventionInitialized = false;
+
+// Function to ensure sleep prevention is active
+function ensureSleepPrevention() {
+    if (!sleepPreventionInitialized) {
+        preventSleep();
+        sleepPreventionInitialized = true;
+        console.log("Sleep prevention initialized");
+    }
+}
+
+// Modify the preventSleep function
 function preventSleep() {
     // First, detect if we're on iOS
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -347,138 +459,49 @@ function preventSleep() {
                 lockWakeState();
             }
         });
+    } else if (isIOS) {
+        // Use our enhanced iOS-specific approach
+        console.log("Using iOS-specific sleep prevention");
+        enhancedIOSSleepPrevention();
     } else {
-        // For iOS or devices without Wake Lock API support
+        // For other browsers without Wake Lock API
         console.log("Using fallback sleep prevention");
         
         // Create a video element playing silently in the background
         const video = document.createElement('video');
         video.setAttribute('playsinline', '');
-        video.setAttribute('webkit-playsinline', '');
         video.muted = true;
         video.loop = true;
-        video.autoplay = true;
-        video.width = 1;
-        video.height = 1;
+        video.style.width = '1px';
+        video.style.height = '1px';
         video.style.position = 'absolute';
-        video.style.left = '-1px';
-        video.style.top = '-1px';
         video.style.opacity = '0.01';
         
-        // Add a blank video source (data URI for a tiny video)
+        // Add a video source
         const source = document.createElement('source');
-        source.src = 'sample.mp4';;
+        source.src = 'sample.mp4'; // Using the file you specified
         source.type = 'video/mp4';
         video.appendChild(source);
         
         document.body.appendChild(video);
         
-        // Function to ensure video is playing
-        const ensureVideoIsPlaying = () => {
-            if (video.paused) {
-                video.play().catch(e => {
-                    console.error("Failed to play video for sleep prevention:", e);
-                });
-            }
-        };
-        
         // Play the video to keep the screen awake
         video.play().catch(e => {
             console.error("Initial video play error:", e);
             
-            // For iOS, we need user interaction first
-            // We'll try again when user interacts with the page
+            // Try again when user interacts with the page
             document.addEventListener('click', function videoPlayHandler() {
                 video.play().catch(e => console.error("Video play error after click:", e));
                 document.removeEventListener('click', videoPlayHandler);
             }, { once: true });
         });
         
-        // Periodically check if video is still playing
-        setInterval(ensureVideoIsPlaying, 30000);
-        
-        // Also use audio to prevent sleep
-        const createNoSleepAudio = () => {
-            const audio = new Audio();
-            audio.src = '1-sec.mp3'; // Your silent MP3
-            audio.loop = true;
-            audio.play().catch(e => console.error("Audio play error:", e));
-            return audio;
-        };
-        
-        let noSleepAudio = null;
-        
-        // Start audio on user interaction
-        document.addEventListener('click', function audioStartHandler() {
-            if (!noSleepAudio) {
-                noSleepAudio = createNoSleepAudio();
-            }
-            document.removeEventListener('click', audioStartHandler);
-        }, { once: true });
-        
         // Also use the opacity trick as additional fallback
         setInterval(() => {
             document.body.style.opacity = document.body.style.opacity === '0.9999' ? '1' : '0.9999';
         }, 30000);
-        
-        // For iOS, add a touchstart listener to keep the device awake
-        if (isIOS) {
-            // Create an invisible div that covers the whole screen
-            const touchDiv = document.createElement('div');
-            touchDiv.style.position = 'fixed';
-            touchDiv.style.top = '0';
-            touchDiv.style.left = '0';
-            touchDiv.style.width = '100%';
-            touchDiv.style.height = '100%';
-            touchDiv.style.zIndex = '-1'; // Behind everything
-            touchDiv.style.opacity = '0';
-            touchDiv.style.pointerEvents = 'none'; // Don't block real interactions
-            document.body.appendChild(touchDiv);
-            
-            // Every 30 seconds, simulate a touch event
-            setInterval(() => {
-                // Create and dispatch a touch event
-                try {
-                    const touchEvent = new TouchEvent('touchstart', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window
-                    });
-                    touchDiv.dispatchEvent(touchEvent);
-                    console.log("Simulated touch event to prevent sleep");
-                } catch (e) {
-                    console.error("Failed to create touch event:", e);
-                    
-                    // Fallback: create a user interaction by focusing and blurring an element
-                    const dummyInput = document.createElement('input');
-                    dummyInput.style.position = 'absolute';
-                    dummyInput.style.opacity = '0';
-                    document.body.appendChild(dummyInput);
-                    dummyInput.focus();
-                    setTimeout(() => {
-                        dummyInput.blur();
-                        document.body.removeChild(dummyInput);
-                    }, 10);
-                }
-            }, 30000);
-        }
     }
 }
-
-// Variable to track if sleep prevention has been initialized
-let sleepPreventionInitialized = false;
-
-// Function to ensure sleep prevention is active
-function ensureSleepPrevention() {
-    if (!sleepPreventionInitialized) {
-        preventSleep();
-        sleepPreventionInitialized = true;
-        console.log("Sleep prevention initialized");
-    }
-}
-
-// Call the function to prevent sleep
-preventSleep();
         
         // Timer functionality
         const twoMinBtn = document.getElementById('twoMinBtn');
@@ -616,9 +639,9 @@ function unlockAudioForIOS() {
     silentAudio.setAttribute('playsinline', '');
     silentAudio.setAttribute('webkit-playsinline', '');
     
-    // Use the empty MP3 file you've already added
+    // Use the specified MP3 file
     const source = document.createElement('source');
-    source.src = '1-sec.mp3'; // Assuming this is the name of your empty MP3 file
+    source.src = '1-sec.mp3'; // Using the file you specified
     source.type = 'audio/mpeg';
     silentAudio.appendChild(source);
     
