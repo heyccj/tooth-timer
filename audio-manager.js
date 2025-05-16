@@ -182,19 +182,35 @@ class AudioManager {
             this.audioContext.resume().then(() => {
                 console.log("AudioContext resumed before playing", type);
                 this.actuallyPlaySound(type);
+                
+                // For iOS, also try to unblock audio again
+                if (this.isIOS) {
+                    this.playUnblockSound();
+                }
             }).catch(err => {
                 console.error(`Failed to resume AudioContext for ${type}:`, err);
                 
                 // For iOS, show the prompt again if we can't resume
-                if (this.isIOS && !this.hasUserInteracted) {
-                    this.showPermissionPrompt();
+                if (this.isIOS) {
+                    // Try to play anyway
+                    this.actuallyPlaySound(type);
+                    
+                    // If user hasn't interacted, show prompt
+                    if (!this.hasUserInteracted) {
+                        this.showPermissionPrompt();
+                    }
                 }
             });
         } else {
+            // For iOS, always try to unblock audio before playing
+            if (this.isIOS) {
+                this.playUnblockSound();
+            }
+            
             this.actuallyPlaySound(type);
         }
         
-        // Add vibration for mobile devices
+        // Add vibration for mobile devices - this works even in silent mode
         if ('vibrate' in navigator) {
             switch(type) {
                 case 'start':

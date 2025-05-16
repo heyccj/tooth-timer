@@ -32,14 +32,18 @@ document.addEventListener('DOMContentLoaded', function() {
         let timer = duration;
         let minutes, seconds;
         
-        // For iOS, create a periodic audio context resume
+        // For iOS, create a more frequent audio context resume
         let audioKeepAlive;
         if (audioManager.isIOS) {
             audioKeepAlive = setInterval(() => {
                 if (audioManager.audioContext && audioManager.audioContext.state === 'suspended') {
                     audioManager.audioContext.resume().catch(() => {});
                 }
-            }, 10000); // Try every 10 seconds
+                
+                // Also periodically play a silent sound to keep audio active
+                audioManager.playUnblockSound();
+                
+            }, 5000); // Try every 5 seconds instead of 10
         }
         
         const interval = setInterval(function() {
@@ -53,8 +57,16 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Add sound notifications at specific times for 2-minute timer
             if (duration === 120) {
+                // Prepare for 1:30 mark (30 seconds elapsed)
+                if (timer === 92) { // 2 seconds before
+                    // Prepare audio context for upcoming sound
+                    if (audioManager.isIOS && audioManager.audioContext) {
+                        audioManager.audioContext.resume().catch(() => {});
+                        audioManager.playUnblockSound();
+                    }
+                }
                 // Play sound at 1:30 mark (30 seconds elapsed)
-                if (timer === 90) {
+                else if (timer === 90) {
                     audioManager.playIntermediateSound();
                     console.log("Played 1:30 notification");
                 }
@@ -83,8 +95,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Remove active class
                 button.classList.remove('active');
                 
+                // Prepare audio context for end sound
+                if (audioManager.isIOS && audioManager.audioContext) {
+                    audioManager.audioContext.resume().catch(() => {});
+                    audioManager.playUnblockSound();
+                }
+                
                 // Play end sound
-                audioManager.playEndSound();
+                setTimeout(() => {
+                    audioManager.playEndSound();
+                }, 100); // Short delay after preparation
                 
                 // Vibrate if supported
                 if ('vibrate' in navigator) {
