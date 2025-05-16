@@ -400,7 +400,7 @@ function preventSleep() {
         // Also use audio to prevent sleep
         const createNoSleepAudio = () => {
             const audio = new Audio();
-            audio.src = 'silence.mp3'; // Your silent MP3
+            audio.src = '1-sec.mp3'; // Your silent MP3
             audio.loop = true;
             audio.play().catch(e => console.error("Audio play error:", e));
             return audio;
