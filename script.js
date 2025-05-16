@@ -285,6 +285,7 @@ class WakeLockManager {
             // Special handling for iOS/Safari
             if (this.isIOS && (error.name === 'NotAllowedError' || error.name === 'NotAllowed')) {
                 console.info('iOS requires user interaction before enabling wake lock');
+                this.showUserPrompt();
             }
             
             return false;
@@ -301,6 +302,38 @@ class WakeLockManager {
                 .catch(error => {
                     console.error('Failed to release Wake Lock:', error);
                 });
+        }
+    }
+    
+    // Show a user-friendly message prompting for interaction
+    showUserPrompt() {
+        if (this.isIOS && !this.hasUserInteracted) {
+            const promptEl = document.createElement('div');
+            promptEl.style.position = 'fixed';
+            promptEl.style.top = '10px';
+            promptEl.style.left = '50%';
+            promptEl.style.transform = 'translateX(-50%)';
+            promptEl.style.padding = '10px 20px';
+            promptEl.style.backgroundColor = 'rgba(0,0,0,0.7)';
+            promptEl.style.color = 'white';
+            promptEl.style.borderRadius = '5px';
+            promptEl.style.zIndex = '9999';
+            promptEl.style.textAlign = 'center';
+            promptEl.textContent = 'Tap anywhere to keep screen awake';
+            
+            document.body.appendChild(promptEl);
+            
+            // Remove the prompt after user interaction
+            document.addEventListener('click', () => {
+                promptEl.remove();
+            }, { once: true });
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (document.body.contains(promptEl)) {
+                    promptEl.remove();
+                }
+            }, 5000);
         }
     }
 }
