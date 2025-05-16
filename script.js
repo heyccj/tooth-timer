@@ -250,6 +250,130 @@ function playEndSound() {
 }
 
 /**
+ * Unified iOS Permission Manager - Handles both wake lock and audio permissions
+ */
+class iOSPermissionManager {
+    constructor() {
+        this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        this.hasUserInteracted = false;
+        this.wakeLockManager = null;
+        this.promptElement = null;
+    }
+    
+    initialize(wakeLockManager) {
+        // Store reference to wake lock manager
+        this.wakeLockManager = wakeLockManager;
+        
+        // Only proceed for iOS devices
+        if (!this.isIOS) return;
+        
+        // Show the unified prompt
+        this.showUnifiedPrompt();
+        
+        // Setup event listeners for user interaction
+        const interactionEvents = ['click', 'touchstart'];
+        interactionEvents.forEach(eventType => {
+            document.addEventListener(eventType, () => {
+                this.handleUserInteraction();
+            }, { once: true, passive: true });
+        });
+    }
+    
+    showUnifiedPrompt() {
+        // Create the prompt element
+        this.promptElement = document.createElement('div');
+        this.promptElement.style.position = 'fixed';
+        this.promptElement.style.top = '50%';
+        this.promptElement.style.left = '50%';
+        this.promptElement.style.transform = 'translate(-50%, -50%)';
+        this.promptElement.style.padding = '20px';
+        this.promptElement.style.backgroundColor = 'rgba(0,0,0,0.8)';
+        this.promptElement.style.color = 'white';
+        this.promptElement.style.borderRadius = '10px';
+        this.promptElement.style.zIndex = '10000';
+        this.promptElement.style.textAlign = 'center';
+        this.promptElement.style.maxWidth = '80%';
+        this.promptElement.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+        this.promptElement.innerHTML = `
+            <h3 style="margin-top:0;font-size:18px;">Tap to Enable Features</h3>
+            <p style="margin:10px 0;font-size:14px;">• Keep screen on during timer</p>
+            <p style="margin:10px 0;font-size:14px;">• Enable timer sound notifications</p>
+            <button style="background:#007bff;border:none;color:white;padding:8px 16px;border-radius:4px;margin-top:10px;font-size:16px;">Enable</button>
+        `;
+        
+        // Add to document
+        document.body.appendChild(this.promptElement);
+        
+        // Add click handler specifically for the button
+        const button = this.promptElement.querySelector('button');
+        if (button) {
+            button.addEventListener('click', () => {
+                this.handleUserInteraction();
+            });
+        }
+        
+        // Auto-remove after 10 seconds
+        setTimeout(() => {
+            this.removePrompt();
+        }, 10000);
+    }
+    
+    handleUserInteraction() {
+        this.hasUserInteracted = true;
+        
+        // Remove the prompt
+        this.removePrompt();
+        
+        // Initialize audio
+        initAudio();
+        
+        // Try to play a silent sound to enable audio
+        if (audioContext) {
+            // Resume the context
+            audioContext.resume().then(() => {
+                console.log("AudioContext resumed by user interaction");
+                
+                // Play a silent sound
+                const buffer = audioContext.createBuffer(1, 1, 22050);
+                const source = audioContext.createBufferSource();
+                source.buffer = buffer;
+                source.connect(audioContext.destination);
+                source.start(0);
+                
+                // Also try a short beep
+                const osc = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                osc.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                gainNode.gain.setValueAtTime(0.01, audioContext.currentTime);
+                osc.frequency.setValueAtTime(440, audioContext.currentTime);
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + 0.1);
+            }).catch(err => {
+                console.error("Failed to resume AudioContext on user interaction:", err);
+            });
+        }
+        
+        // Also try to enable wake lock
+        if (this.wakeLockManager) {
+            this.wakeLockManager.hasUserInteracted = true;
+            this.wakeLockManager.requestWakeLock();
+        }
+        
+        // Enable iOS audio
+        enableIOSAudio();
+        unblockPlayback();
+    }
+    
+    removePrompt() {
+        if (this.promptElement && document.body.contains(this.promptElement)) {
+            document.body.removeChild(this.promptElement);
+            this.promptElement = null;
+        }
+    }
+}
+
+/**
  * Wake Lock Manager - Handles keeping the screen awake across different platforms
  */
 class WakeLockManager {
@@ -536,24 +660,25 @@ document.addEventListener('DOMContentLoaded', function() {
     function initializeApp() {
         console.log('Initializing application...');
         
-        // Try to request wake lock immediately (will work on desktop browsers but not iOS)
-        wakeLockManager.requestWakeLock();
+        // Initialize wake lock manager
+        const wakeLockManager = new WakeLockManager();
         
-        // For iOS, initialize audio to help with keeping the device awake
-        if (wakeLockManager.isIOS) {
-            // Set up audio context on first user interaction
-            document.addEventListener('click', function initIOSAudio() {
-                initAudio();
-                enableIOSAudio();
-                document.removeEventListener('click', initIOSAudio);
-            }, { once: true });
+        // For iOS, use the unified permission manager
+        if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream) {
+            const permissionManager = new iOSPermissionManager();
+            permissionManager.initialize(wakeLockManager);
+        } else {
+            // For non-iOS devices, just request wake lock
+            wakeLockManager.requestWakeLock();
         }
         
         console.log('Application initialized successfully');
+        
+        return wakeLockManager;
     }
     
     // Initialize the app when the DOM is fully loaded
-    initializeApp();
+    const wakeLockManager = initializeApp();
 });
 
 // Function to initialize audio specifically for iOS
